@@ -1,90 +1,128 @@
-# Конкурсное задание: АБУ и цифровой рудник
+# Решение АБУ (конкурс)
 
-Прототип учебного стенда: **автономная буровая установка (АБУ)** как киберфизическая система, **цифровой рудник (ЦР)** как надсистема координации и **Регулятор** — служба сертификации поставки ПО АБУ. Проект ориентирован на требования **ГОСТ Р 72118-2025** (цели и предположения безопасности, ДВБ, SBOM) и практики **ISO/SAE 21434** (моделирование угроз, TARA).
+**Участник / команда:** _указать_  
+**Коммит / тег:** _указать_  
+**Дата:** 2026-05-17
 
-**Редакция документации и критериев: 1.7.7.**
+Полная копия отчёта для жюри (критерий C17): [`docs/solution.md`](../docs/solution.md).  
+Таблица баллов: [`docs/evaluation_report.md`](../docs/evaluation_report.md).
 
-## С чего начать (линейный маршрут)
+---
 
-1. **[docs/contest_task.md](docs/contest_task.md)** — формулировка задания, user story, что сдавать (читать **первым**).
-2. **[docs/contest_regulations.md](docs/contest_regulations.md)** — 22 критерия **C01–C22**, уровни **0–3** балла каждый, сумма raw до **66**, нормализация итога в **10–20**.
-3. **[docs/context.md](docs/context.md)** и **[docs/architecture.md](docs/architecture.md)** — предметная область и архитектура (после п. 1–2).
-4. **[docs/quality_requirements.md](docs/quality_requirements.md)** — окружение Python; затем `make install`.
-5. `make tests-all` — проверка тестов.
-6. **[docs/certification_process.md](docs/certification_process.md)** — сертификация: `make prepare-cert-bundle`, `make certify-abu`.
-7. Критерии с расшифровкой и ссылками на файлы: **[docs/criteria_rubric.md](docs/criteria_rubric.md)**; индекс всей документации — **[docs/README.md](docs/README.md)**.
+## 1. Архитектура решения
 
-Имена тестов в `pytest` и комментарии в коде **не** являются строками таблицы баллов: итог по критериям даёт **`make evaluate-score`** ([`scripts/evaluate_contest_score.py`](scripts/evaluate_contest_score.py)) и шаблон [docs/templates/evaluation_report.md](docs/templates/evaluation_report.md).
+Код в каталоге `src_solution/`. АБУ разделён на **доверенную вычислительную базу (ДВБ)** и **недоверенную зону** (`other`), см. [architecture.md](../docs/architecture.md) и [sbom_guide.md](../docs/sbom_guide.md).
 
-## Платформа: Linux и окружение
+| Зона | Каталог | Модули |
+|------|---------|--------|
+| **ДВБ** | `abu/tcb/` | `app.py`, `safety.py`, `event_log.py`, `ipc_policies.json` |
+| **Недоверенная** | `abu/other/` | `pseudo_ai.py`, `numpy_workflow.py` |
 
-**Эталонная среда для проверки жюри и команд Makefile — Linux** (bash, POSIX-пути). На **Windows** без **WSL2**, **Docker** или **GitHub Codespaces** часто возникают ошибки (`make`, `pipenv`, разделители путей).
+**Граница доверия:** `safety.py` не импортирует `pseudo_ai`; остановка — по `risk` и `vibration_score` из `app.py`. Вызовы в `other` — по `abu/tcb/ipc_policies.json`.
 
-- **GitHub Codespaces:** откройте репозиторий на GitHub → **Code** → **Codespaces** → **Create codespace on main** → в терминале: `make install`, `make tests-all`.
-- **WSL2** (Windows): установите дистрибутив Linux, клонируйте репозиторий в файловую систему WSL и выполняйте те же команды, что в инструкции.
-- Разработка на любой ОС допустима, если в сдаче **воспроизводимо** проходят тесты; официальная проверка выполняется в среде, согласованной с жюри (как правило **Linux**).
+**Зависимости:** `requirements.txt`, `requirements-other.txt`.  
+**SBOM:** `sbom/SBOM_TCB.cdx.json` (ДВБ), `sbom/SBOM_OTHER.cdx.json` (numpy, веб-стек).
 
-При наличии [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json) можно открыть репозиторий в контейнере (VS Code / Codespaces) с предустановленными зависимостями.
+```mermaid
+flowchart LR
+  subgraph TCB["ДВБ (tcb)"]
+    APP[app.py]
+    SAF[safety.py]
+    LOG[event_log.py]
+  end
+  subgraph OTHER["other"]
+    AI[pseudo_ai.py]
+    NP[numpy_workflow.py]
+  end
+  CR[(ЦР)] -->|REST| APP
+  APP --> SAF
+  APP --> LOG
+  APP -->|разрешённые ops| AI
+  APP -->|разрешённые ops| NP
+  SAF -.->|risk, vib_score| APP
+```
 
-## Контекст
+**Отличие от** `src_starting_point/`: псевдо-ИИ и numpy в `other`; проверки безопасности в ДВБ; numpy только в **SBOM_OTHER**.
 
-| Компонент | Роль |
+Диаграммы: [context.png](../docs/diagrams/png/context.png), [certification_pipeline.png](../docs/diagrams/png/certification_pipeline.png).
+
+---
+
+## 2. Политики безопасности и цели (ЦПБ)
+
+Сопоставление SG и тестов: [security_tests.md](../docs/security_tests.md).
+
+| SG | Реализация | Тесты |
+|----|------------|-------|
+| **SG_ADS_Authorized_critical_commands** | `safety.py`, `POST /api/v1/missions` | `tests/security/test_sg_authorized_commands.py`, `../tests/test_src_solution_tcb_coverage.py` |
+| **SG_ADS_Controlled_operations** | `should_emergency_stop`, эвристики в `other` | `tests/security/test_sg_controlled_ops.py`, `tests/test_safety.py` |
+| **SG_ADS_Security_events_store** | `EventLog`, API `/api/v1/events/*` | `tests/security/test_sg_security_events.py`, `tests/test_event_log.py` |
+
+**IPC:** `abu/tcb/ipc_policies.json`.
+
+---
+
+## 3. Тесты
+
+Из корня репозитория:
+
+```bash
+make install
+make tests-all
+```
+
+```bash
+pipenv run pytest -q src_starting_point/tests src_solution/tests tests
+```
+
+Покрытие ДВБ (C16):
+
+```bash
+pipenv run pytest -q src_starting_point/tests tests \
+  --cov=src_solution.abu.tcb --cov-report=term-missing
+```
+
+Сквозной сценарий ЦР–АБУ: `tests/test_e2e_abu_dm_scenario.py`.
+
+---
+
+## 4. Тесты безопасности
+
+```bash
+pipenv run pytest -q -m security src_starting_point/tests/security src_solution/tests/security
+```
+
+---
+
+## 5. Сертификация
+
+```bash
+bash scripts/prepare_certification_bundle_solution.sh
+make certify-abu
+```
+
+В пакете: `abu/`, `requirements.txt`, тесты, `sbom/SBOM_*.cdx.json`, `security/sga.json`.
+
+---
+
+## 6. Диаграммы
+
+| Диаграмма | Файл |
 |-----------|------|
-| **ЦР** | Регистрация установок, миссии, политика сертификатов (`CR_CERT_POLICY`), проверка **SGA** (ЦПБ) через Регулятор, учёт стоимости поддержки. |
-| **АБУ** | Исполнение миссий, телеметрия, псевдо-ИИ и проверки безопасности; в заготовке — намеренный технический долг (ДВБ не отделена от остального кода). |
-| **Регулятор** | Приём сертификационного пакета (исходники, **SGA**, **SBOM_TCB** / **SBOM_OTHER**), песочница с `pytest` и покрытием, в т.ч. отдельный прогон **тестов безопасности**, выдача **сертификата** (хэш пакета) и оценки стоимости. |
+| Контекст | [context.png](../docs/diagrams/png/context.png) |
+| АБУ v1 | [abu_v1_internal.png](../docs/diagrams/png/abu_v1_internal.png) |
+| Миссия | [sequence_mission.png](../docs/diagrams/png/sequence_mission.png) |
+| Сертификация | [certification_pipeline.png](../docs/diagrams/png/certification_pipeline.png) |
 
-В коде и API используется термин **SGA** (*security goals and assumptions*); в текстах регламента допустимо **ЦПБ**.
+---
 
-## Структура репозитория
+## Быстрые команды
 
-| Каталог / файл | Назначение |
-|----------------|------------|
-| [src_starting_point/](src_starting_point/) | Заготовка АБУ (отправная точка для конкурсантов; намеренно неоптимальна как образец архитектуры). |
-| [src_solution/](src_solution/) | Рабочая зона решения: `abu/tcb` (ДВБ), `abu/other`, `sbom/SBOM_*.cdx.json` (не изменяется организаторами без отдельной договорённости). |
-| [external_systems/digital_mine/](external_systems/digital_mine/) | Прототип ЦР. |
-| [external_systems/regulator/](external_systems/regulator/) | Прототип Регулятора. |
-| [tests/](tests/) | Интеграционные и прочие тесты репозитория. |
-| [docs/](docs/) | Архитектура, сценарии, процесс сертификации, регламент, TARA. |
-| [Makefile](Makefile) | `install`, `tests-all`, подготовка пакета, сертификация, оценка, Docker. |
+| Действие | Команда |
+|----------|---------|
+| Тесты | `make tests-all` |
+| Баллы | `make evaluate-score` |
+| Пакет на сертификацию | `bash scripts/prepare_certification_bundle_solution.sh` |
+| Сертификация | `make certify-abu` |
 
-## Полезные документы
-
-| Документ | Содержание |
-|----------|------------|
-| [docs/contest_task.md](docs/contest_task.md) | Задание и user story (**начать отсюда**). |
-| [docs/criteria_rubric.md](docs/criteria_rubric.md) | C01–C22, уровни 0–3, пути к файлам. |
-| [docs/quality_requirements.md](docs/quality_requirements.md) | Окружение Python, тесты, changelog, git. |
-| [docs/certification_process.md](docs/certification_process.md) | Пошаговая сертификация и примеры. |
-| [docs/sbom_guide.md](docs/sbom_guide.md) | SBOM_TCB / SBOM_OTHER, манифест, генерация CycloneDX. |
-| [docs/security_tests.md](docs/security_tests.md) | Связь целей безопасности (SG) и тестов. |
-| [docs/tara_abu.md](docs/tara_abu.md) | TARA, диаграммы угроз. |
-| [docs/contest_regulations.md](docs/contest_regulations.md) | Регламент, tie-break, формат сдачи. |
-| [docs/operational_scenario_v1.md](docs/operational_scenario_v1.md) | Сценарий эксплуатации. |
-| [docs/scope_two_day.md](docs/scope_two_day.md) | Ограничение по времени на задачу. |
-| [docs/slides/README.md](docs/slides/README.md) | Презентация Beamer, сборка PDF (`build_pdf.sh`). |
-| [requests.rest](requests.rest) | Примеры HTTP (REST Client). |
-
-## Окружение и проверки
-
-- **Python 3.12+**, зависимости из [Pipfile](Pipfile) / [Pipfile.lock](Pipfile.lock); команды через `make` и `pipenv run …`.
-- Установка: `make install`.
-- Все тесты: `make tests-all`.
-- Оценка по критериям: `make evaluate-score` (сумма raw до **66**, итог **10 + (raw/66)×10**).
-- Docker (опционально): `make docker-build`, `make docker-up` — см. скрипты в [scripts/](scripts/).
-
-Не устанавливайте пакеты в системный интерпретатор: см. раздел «Окружение» в [docs/quality_requirements.md](docs/quality_requirements.md).
-
-## На что обратить внимание для баллов
-
-По [регламенту](docs/contest_regulations.md) и скрипту [scripts/evaluate_contest_score.py](scripts/evaluate_contest_score.py) наибольший вес дают:
-
-- **Стабильное прохождение тестов** (`make tests-all`) и осмысленные **тесты безопасности** с покрытием критичного кода.
-- **Сертификация через Регулятор**: корректный пакет с **SGA** и раздельным **SBOM** (TCB / OTHER), осмысленная **модель стоимости** и зависимостей ДВБ.
-- **Архитектура и ДВБ**: разделение доверенного кода, обоснование в документации, **TARA** и сопоставление целей с тестами.
-- **Отчёт о решении** [docs/solution.md](docs/solution.md) (C17), структура **ДВБ** (`src_solution/abu/tcb`), **SBOM решения** (`src_solution/sbom/`), и **таблица баллов** по [docs/templates/evaluation_report.md](docs/templates/evaluation_report.md) ([пример](docs/templates/evaluation_report_example.md)).
-- **Решение в `src_solution/`:** по регламенту оцениваются в т.ч. **security_monitor**, **policies**, изоляция доменов и контроль запросов/ответов (C18–C19); ориентир — [пример с изоляцией в учебном ноутбуке](https://github.com/cyberimmunity-edu/cyberimmune-systems-example-traffic-light-jupyter-notebook/blob/master/cyberimmunity-traffic-lights-example.ipynb) (см. также [docs/architecture.md](docs/architecture.md)).
-
-## Лицензия и состав
-
-В репозитории хранятся исходный код, документация и скрипты; временные артефакты (например `artifacts/`, локальные логи) не коммитятся — см. [.gitignore](.gitignore).
+**Окружение:** Python 3.12+, Pipenv; рекомендуется Linux / WSL2 — см. [README.md](../README.md).
