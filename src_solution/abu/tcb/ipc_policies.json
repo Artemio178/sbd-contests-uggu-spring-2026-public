@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "allows": [
+    {
+      "from": "tcb.app",
+      "to": "other.pseudo_ai",
+      "ops": ["anomaly_vibration", "regime_suggest", "risk_flag"]
+    },
+    {
+      "from": "tcb.app",
+      "to": "other.numpy_workflow",
+      "ops": ["smooth_vibration_window"]
+    }
+  ],
+  "_note": "Доверенная зона вызывает только перечисленные операции недоверенной; расширяйте при введении монитора."
+}

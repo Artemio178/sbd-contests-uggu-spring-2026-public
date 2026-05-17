@@ -1,0 +1,100 @@
+{
+  "_note": "numpy и псевдо-ИИ — в other; ДВБ (контроллер) — в tcb. Генерация: pipenv run python scripts/generate_sbom_cdx.py --manifest src_solution/sbom/sbom_manifest.json --out-tcb src_solution/sbom/SBOM_TCB.cdx.json --out-other src_solution/sbom/SBOM_OTHER.cdx.json",
+  "timestamp": "2026-05-17T12:00:00Z",
+  "tcb": {
+    "serialNumber": "urn:uuid:33333333-3333-3333-3333-333333333333",
+    "metadata": {
+      "type": "application",
+      "name": "abu-tcb",
+      "version": "0.2.0"
+    },
+    "components": [
+      {
+        "type": "application",
+        "name": "abu-controller",
+        "version": "0.2.0",
+        "bom_ref": "abu-controller",
+        "description": "Доверенная вычислительная база — API, журнал, проверки безопасности"
+      }
+    ],
+    "dependencies": [
+      {
+        "ref": "abu-controller",
+        "dependsOn": []
+      }
+    ]
+  },
+  "other": {
+    "serialNumber": "urn:uuid:44444444-4444-4444-4444-444444444444",
+    "metadata": {
+      "type": "application",
+      "name": "abu-non-tcb",
+      "version": "0.2.0"
+    },
+    "components": [
+      {
+        "type": "application",
+        "name": "abu-pseudo-ai",
+        "version": "0.2.0",
+        "bom_ref": "abu-pseudo-ai",
+        "description": "Псевдо-ИИ и numpy-обработка (недоверенная зона)"
+      },
+      {
+        "type": "library",
+        "name": "numpy",
+        "version": "2.4.3",
+        "bom_ref": "pkg:pypi/numpy@2.4.3"
+      },
+      {
+        "type": "library",
+        "name": "fastapi",
+        "version": "0.115.14",
+        "bom_ref": "pkg:pypi/fastapi@0.115.14"
+      },
+      {
+        "type": "library",
+        "name": "uvicorn",
+        "version": "0.32.1",
+        "bom_ref": "pkg:pypi/uvicorn@0.32.1"
+      },
+      {
+        "type": "library",
+        "name": "pydantic",
+        "version": "2.12.5",
+        "bom_ref": "pkg:pypi/pydantic@2.12.5"
+      },
+      {
+        "type": "library",
+        "name": "httpx",
+        "version": "0.28.1",
+        "bom_ref": "pkg:pypi/httpx@0.28.1"
+      }
+    ],
+    "dependencies": [
+      {
+        "ref": "abu-pseudo-ai",
+        "dependsOn": ["pkg:pypi/numpy@2.4.3"]
+      },
+      {
+        "ref": "pkg:pypi/numpy@2.4.3",
+        "dependsOn": []
+      },
+      {
+        "ref": "pkg:pypi/fastapi@0.115.14",
+        "dependsOn": []
+      },
+      {
+        "ref": "pkg:pypi/uvicorn@0.32.1",
+        "dependsOn": []
+      },
+      {
+        "ref": "pkg:pypi/pydantic@2.12.5",
+        "dependsOn": []
+      },
+      {
+        "ref": "pkg:pypi/httpx@0.28.1",
+        "dependsOn": []
+      }
+    ]
+  }
+}
